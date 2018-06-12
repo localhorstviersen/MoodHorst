@@ -1,4 +1,5 @@
 #include "FastLED.h"
+#include "LiquidCrystal.h"
 
 FASTLED_USING_NAMESPACE
 
@@ -9,14 +10,17 @@ FASTLED_USING_NAMESPACE
 #define NUM_LEDS    256
 CRGB leds[NUM_LEDS];
 
-#define MAX_BRIGHTNESS     80
+#define BASE_BRIGHTNESS     80
 #define FRAMES_PER_SECOND  240
+
+LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
 
 void setup() {
   delay(3000); // 3 second delay for recovery
   
   // initialize led strip/panel/matrix
   FastLED.addLeds<LED_TYPE,DATA_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  lcd.begin(16, 2);
 }
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
@@ -28,9 +32,15 @@ uint8_t Hue = 0; // rotating "base color" used by many of the patterns
   
 void loop()
 {
+    lcd.clear();
+    lcd.setCursor(0, 0);
     int reading  = analogRead(AMBIENCE_LIGHT_PIN);
+    lcd.print("Light: " + (String)reading);
 
-    int cur_brightness = (MAX_BRIGHTNESS * 8) / reading * 2; // adjust the MAX brightness value to match input readings
+    int cur_brightness = (BASE_BRIGHTNESS * 8) / reading * 2; // adjust the MAX brightness value to match input readings
+
+    lcd.setCursor(0, 1);
+    lcd.print("Brightness: " + (String)cur_brightness);
 
     if(reading < 200 ) {
       FastLED.setBrightness(cur_brightness);  
