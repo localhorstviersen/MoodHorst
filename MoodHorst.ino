@@ -10,7 +10,7 @@ FASTLED_USING_NAMESPACE
 #define NUM_LEDS    256
 CRGB leds[NUM_LEDS];
 
-#define BASE_BRIGHTNESS     80
+#define BASE_BRIGHTNESS     255
 #define FRAMES_PER_SECOND  240
 
 LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
@@ -38,6 +38,7 @@ void loop()
     lcd.print("Light: " + (String)reading);
 
     int cur_brightness = (BASE_BRIGHTNESS * 8) / reading * 2; // adjust the MAX brightness value to match input readings
+    if( cur_brightness > 255 ) ( cur_brightness = 255 ) ; // limit brightness value to original W2812B maximum of 255
 
     lcd.setCursor(0, 1);
     lcd.print("Brightness: " + (String)cur_brightness);
