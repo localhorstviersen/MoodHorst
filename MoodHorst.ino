@@ -8,7 +8,7 @@
 
 FASTLED_USING_NAMESPACE
 
-#define DATA_PIN    3
+#define DATA_PIN    5
 #define AMBIENCE_LIGHT_PIN  0 // For input from photocell (or potentiometer) to dim the leds by external input
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
@@ -18,7 +18,7 @@ CRGB leds[NUM_LEDS];
 #define BASE_BRIGHTNESS     90
 #define FRAMES_PER_SECOND  240
 
-LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
+LiquidCrystal lcd(7, 8, 0, 1, 2, 3);
 
 DS3231 clock;
 RTCDateTime dt;
@@ -136,7 +136,7 @@ void sinelon()
 {
   // a colored dot sweeping back and forth, with fading trails
   fadeToBlackBy( leds, NUM_LEDS, 20);
-  int pos = beatsin16( 13, 0, NUM_LEDS-1 );
+  int pos = beatsin16( 13, 0, NUM_LEDS - 1 );
   leds[pos] += CHSV( Hue, 255, 192);
 }
 
