@@ -71,6 +71,12 @@ String sendGET() //client function to send/receive GET request data.
 }
 
 void setup() {
+  // start realtime clock and set datetime
+  clock.begin();
+  clock.setDateTime(__DATE__, __TIME__);
+  on = false;
+  pinMode(buzzer, OUTPUT);
+
   // display boot screen
   lcd.begin(16, 2);
   lcd.setCursor(0, 0);
@@ -84,15 +90,11 @@ void setup() {
   lcd.print("Booting up ... 1");
   delay(1000);
 
-  // start realtime clock and set datetime
-  clock.begin();
-  clock.setDateTime(__DATE__, __TIME__);
-  on = false;
-  pinMode(buzzer, OUTPUT);
-
   // initialize led strip/panel/matrix
   FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
 
+  lcd.clear();
+  lcd.print("Requesting IP ...");
   if (Ethernet.begin(mac) == 0) {
     lcd.clear();
     lcd.print("Failed to configure Ethernet using DHCP");
@@ -105,7 +107,7 @@ void setup() {
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
-SimplePatternList Patterns = { sinelon, confetti };
+SimplePatternList Patterns = { confetti, sinelon };
 
 uint8_t CurrentPattern = 0; // Index number of which pattern is current
 uint8_t Hue = 0; // rotating "base color" may be used by patterns
@@ -125,6 +127,29 @@ void loop()
   lcd.setCursor(0, 1);
   lcd.print(doorstatus);
 
+  int min_hue = 0;
+  int max_hue = 255;
+
+  // check doorstatus and set appropriate hue limits
+  if (doorstatus == "closed") {
+    min_hue = 0;
+    max_hue = 63;
+  }
+  if (doorstatus == "internal") {
+    min_hue = 40;
+    max_hue = 70;
+  }
+  if (doorstatus == "open") {
+    min_hue = 96;
+    max_hue = 159;
+  }
+
+  // set appropriate hue limits
+  if ((Hue < min_hue) || (Hue > max_hue)) {
+    Hue = min_hue;
+  }
+
+  // trigger audiovisual alert at specific time
   if (strcmp(clock.dateFormat("H:i", dt), "22:00") == 0) {
     if (on) {
       on = false;
@@ -137,14 +162,15 @@ void loop()
         digitalWrite(buzzer, LOW);
         delay(2);//wait for 2ms
       }
-      delay(200);
+      delay(50);
     } else {
       fill_solid( leds, NUM_LEDS, CRGB(50, 0, 0));
       FastLED.show();
       on = true;
-      delay(200);
+      delay(50);
     }
   } else {
+    // clear LEDs after alert animation
     if (strcmp(clock.dateFormat("H:i:s", dt), "22:01:00") == 0) {
       FastLED.clear(true);
     }
@@ -177,15 +203,18 @@ void nextPattern()
 {
   // add one to the current pattern number, and wrap around at the end
   CurrentPattern = (CurrentPattern + 1) % ARRAY_SIZE( Patterns);
+
+  // fetch current doorstatus
   sendGET();
 }
 
 void confetti()
 {
-  fadeToBlackBy( leds, NUM_LEDS, 7);
-  delay(80);
-  int pos = random16(NUM_LEDS);
-  leds[pos] += CHSV( Hue + random8(64), 200, random(150, 255));
+  EVERY_N_MILLISECONDS(100) {
+    fadeToBlackBy( leds, NUM_LEDS, 7);
+    int pos = random16(NUM_LEDS);
+    leds[pos] += CHSV( Hue + random8(8), 200, random(150, 255));
+  }
 }
 
 void sinelon()
