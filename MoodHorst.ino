@@ -70,6 +70,11 @@ String getDoorstatus()                                          // client functi
 }
 
 void setup() {
+  // initialize led strip/panel/matrix
+  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  reading  = analogRead(AMBIENCE_LIGHT_PIN);
+  FastLED.clear(true); 
+  
   lcd.begin(16, 2);                                             // display boot screen with three second delay for power up recovery
   lcd.setCursor(0, 0);
   lcd.print("Booting up ... 5");
@@ -87,11 +92,9 @@ void setup() {
   lcd.print("Booting up ... 1");
   delay(1000);
 
-  // initialize led strip/panel/matrix
-  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
-  reading  = analogRead(AMBIENCE_LIGHT_PIN);
-
+  lcd.clear();
   lcd.print("Requesting IP");
+  delay(200);
   if (Ethernet.begin(mac) == 0) {
     lcd.clear();
     lcd.print("DHCP failed!");                                  // no point in carrying on, so do nothing forevermore:
@@ -104,7 +107,7 @@ void setup() {
   pinMode(buzzer, OUTPUT);
 
   timeClient.begin();                                           // start ntp client & request current time
-  timeClient.update();
+  timeClient.forceUpdate();
 
   getDoorstatus();                                              // fetch doorstatus to have a value on boot
 }
@@ -136,25 +139,26 @@ void loop()
   lcd.setCursor(13, 0);
   lcd.print(reading);
 
-  lcd.setCursor(0, 1);
-  lcd.print("Door: ");
-  lcd.setCursor(6, 1);
-  lcd.print(doorstatus);
-
   int min_hue = 0;
   int max_hue = 255;
 
+  lcd.setCursor(0, 1);
+  lcd.print("Door: ");
+  lcd.setCursor(6, 1);
   if (doorstatus == "closed") {                                 // check doorstatus and set appropriate hue limits
     min_hue = 0;
     max_hue = 63;
+    lcd.print("Closed");
   }
   if (doorstatus == "internal") {
     min_hue = 40;
     max_hue = 70;
+    lcd.print("Internal");
   }
   if (doorstatus == "open") {
     min_hue = 96;
     max_hue = 159;
+    lcd.print("Open");
   }
 
   if ((Hue < min_hue) || (Hue > max_hue)) {                     // set appropriate hue limits
@@ -184,8 +188,8 @@ void loop()
     if (dateTime == "22:01:00") {
       FastLED.clear(true);
     }
-    if (reading < 200 ) {
-      if ((reading < 200) && (startFlag == 0) ) {               // ensure ambience light reading is < 200 for at least 5 seconds
+    if (reading < 150 ) {
+      if ((reading < 150) && (startFlag == 0) ) {               // ensure ambience light reading is < 200 for at least 5 seconds
         startFlag = 1;
         startTime = millis();
         previousTime = startTime;
@@ -193,7 +197,7 @@ void loop()
       unsigned long currTime = millis();
       previousTime = previousTime++;
       if ((currTime - startTime ) <= 5000) {                    // still waiting it out
-        if (reading > 200) {
+        if (reading > 150) {
           startFlag = 0;
         }
         delay(100);                                         
