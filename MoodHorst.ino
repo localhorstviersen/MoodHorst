@@ -2,8 +2,9 @@
 #include <LiquidCrystal.h>
 #include <Wire.h>
 #include <DS3231.h>
-#include <SPI.h>
 #include <Ethernet.h>
+#include <NTPClient.h>
+#include <EthernetUdp.h>
 
 // thankfully based on the code examples of:
 // -Mark Kriegsman, December 2014
@@ -11,15 +12,14 @@
 FASTLED_USING_NAMESPACE                                       // Initialize WS2812B matrix and required config
 #define DATA_PIN    5
 #define AMBIENCE_LIGHT_PIN  0                                 // For input from photocell (or potentiometer) to dim the leds by external input
+int reading = 0;
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
 #define NUM_LEDS    256
 CRGB leds[NUM_LEDS];
 #define BASE_BRIGHTNESS     160
-#define FRAMES_PER_SECOND  240
+#define FRAMES_PER_SECOND  120
 
-DS3231 clock;                                                 // Initialize real time clock and buzzer for alerting features
-RTCDateTime dt;
 bool on;
 int buzzer = 4;
 
@@ -31,45 +31,42 @@ LiquidCrystal lcd(7, 8, 0, 1, 2, 3);                          // Initialize LCD
 
 // Ethernet & doorstatus
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };          // physical mac address
-char serverName[] = "10.234.2.103";                           // zoomkat's test web page server
+char serverName[] = "10.234.2.103";                           
 EthernetClient client;
 String doorstatus;
 String readString;
-int x = 0;                                                    //for counting line feeds
-char lf = 10;                                                 //line feed character
+int x = 0;                                                    // for counting line feeds
+char lf = 10;                                                 // line feed character
 int i = 0;
+EthernetUDP Udp;
+NTPClient timeClient(Udp, 7200);
 
-String getDoorstatus()                                        //client function to send/receive GET request data.
+String getDoorstatus()                                        // client function to send/receive GET request data.
 {
   x = 0;
   i++;
   readString = ("");
-  if (client.connect(serverName, 8090)) {                     //starts client connection, checks for connection
-    client.println("GET /doorstatus/status.txt HTTP/1.1");    //download text
+  if (client.connect(serverName, 8090)) {                     // starts client connection, checks for connection
+    client.println("GET /doorstatus/status.txt HTTP/1.1");    // download text
     client.println("Host: 10.234.2.103");
-    client.println("Connection: close");                      //close 1.1 persistent connection
-    client.println();                                         //end of get request
+    client.println("Connection: close");                      // close 1.1 persistent connection
+    client.println();                                         // end of get request
   }
 
-  while (client.connected() && !client.available()) delay(1); //waits for data
-  while (client.connected() || client.available()) {          //connected or data available
-    char c = client.read();                                   //gets byte from ethernet buffer
-    if (c == lf) x = (x + 1);                                 //counting line feeds
-    if (x == 10) readString += c;                             //building readString
+  while (client.connected() && !client.available()) delay(1); // waits for data
+  while (client.connected() || client.available()) {          // connected or data available
+    char c = client.read();                                   // gets byte from ethernet buffer
+    if (c == lf) x = (x + 1);                                 // counting line feeds
+    if (x == 10) readString += c;                             // building readString
   }
   lcd.setCursor(0, 0);
   readString.trim();
   doorstatus = readString;
-  client.stop();                                              //stop client
+  client.stop();                                              // stop client
   return readString;
 }
 
 void setup() {
-  clock.begin();                                              // start realtime clock and set datetime
-  clock.setDateTime(__DATE__, __TIME__);
-  on = false;
-  pinMode(buzzer, OUTPUT);
-
   lcd.begin(16, 2);                                           // display boot screen with three second delay for power up recovery
   lcd.setCursor(0, 0);
   lcd.print("Booting up ... 3");
@@ -83,17 +80,24 @@ void setup() {
 
   // initialize led strip/panel/matrix
   FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  reading  = analogRead(AMBIENCE_LIGHT_PIN);
 
   lcd.print("Requesting IP");
   if (Ethernet.begin(mac) == 0) {
     lcd.clear();
-    lcd.print("DHCP failed!");                                  // no point in carrying on, so do nothing forevermore:    
+    lcd.print("DHCP failed!");                                  // no point in carrying on, so do nothing forevermore:
     lcd.setCursor(0, 1);
     lcd.print("Please restart.");
     while (true);
   }
 
-  getDoorstatus();
+  on = false;                                                   // configuring necessary values for alert & buzzer
+  pinMode(buzzer, OUTPUT);
+
+  timeClient.begin();                                           // start ntp client & request current time
+  timeClient.update();
+
+  getDoorstatus();                                              // fetch doorstatus to have a value on boot
 }
 
 typedef void (*SimplePatternList[])();                          // List of patterns to cycle through.  Each is defined as a separate function below.
@@ -104,25 +108,34 @@ uint8_t Hue = 0;                                                // rotating "bas
 
 void loop()
 {
-  dt = clock.getDateTime();
-  int reading  = analogRead(AMBIENCE_LIGHT_PIN);
+  timeClient.update();                                          // refresh date and time
+  String dateTime = timeClient.getFormattedTime();
+
+  EVERY_N_SECONDS(1) {                                          // only reading ambient light sensor every second to smoothen out transitions
+    reading  = analogRead(AMBIENCE_LIGHT_PIN);
+  }
   int cur_brightness = (BASE_BRIGHTNESS * 8) / reading * 2;     // adjust the MAX brightness value to match input readings
   if ( cur_brightness > 255 ) ( cur_brightness = 255 ) ;        // limit brightness value to original W2812B maximum of 255
   int i;
 
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print(clock.dateFormat("H:i:s", dt));
+  lcd.print(dateTime);
+
+  lcd.setCursor(10, 0);
+  lcd.print("L: ");
+  lcd.setCursor(13, 0);
+  lcd.print(reading);
 
   lcd.setCursor(0, 1);
   lcd.print("Door: ");
-  lcd.setCursor(7, 1);
+  lcd.setCursor(6, 1);
   lcd.print(doorstatus);
 
   int min_hue = 0;
   int max_hue = 255;
 
-if (doorstatus == "closed") {                                   // check doorstatus and set appropriate hue limits
+  if (doorstatus == "closed") {                                   // check doorstatus and set appropriate hue limits
     min_hue = 0;
     max_hue = 63;
   }
@@ -139,17 +152,17 @@ if (doorstatus == "closed") {                                   // check doorsta
     Hue = min_hue;
   }
 
-  if (strcmp(clock.dateFormat("H:i", dt), "22:00") == 0) {      // trigger audiovisual alert at specific time
-    if (on) {
+  if ((timeClient.getHours() == 22) && (timeClient.getMinutes() == 0)) {
+    if (on) {                                                   // trigger audiovisual alert at specific time
       on = false;
       fill_solid( leds, NUM_LEDS, CRGB(0, 0, 30));
       FastLED.show();
       for (i = 0; i < 100; i++)
       {
         digitalWrite(buzzer, HIGH);
-        delay(2);
+        delay(10);
         digitalWrite(buzzer, LOW);
-        delay(2);
+        delay(10);
       }
       delay(50);
     } else {
@@ -159,15 +172,15 @@ if (doorstatus == "closed") {                                   // check doorsta
       delay(50);
     }
   } else {                                                    // clear LEDs after alert animation
-    if (strcmp(clock.dateFormat("H:i:s", dt), "22:01:00") == 0) {
+    if (dateTime == "22:01:00") {
       FastLED.clear(true);
     }
     if (reading < 200 ) {
       FastLED.setBrightness(cur_brightness);
-      Patterns[CurrentPattern]();                             // Call the current pattern function once, updating the 'leds' array      
-      FastLED.show();                                         // send the 'leds' array out to the actual LED strip      
+      Patterns[CurrentPattern]();                             // Call the current pattern function once, updating the 'leds' array
+      FastLED.show();                                         // send the 'leds' array out to the actual LED strip
       FastLED.delay(1000 / FRAMES_PER_SECOND);                // insert a delay to keep the framerate modest
-      
+
       EVERY_N_MILLISECONDS( 80 ) {                            // do some periodic updates
         Hue++;                                                // cycle the "base color" through the rainbow
       }
